@@ -40,6 +40,10 @@ res = run_simulation(DiagonalMultiStencil(P), grid, params, U0, 1.0)
 println("min(U) = ", minimum(res.U))   # always >= 0
 ```
 
+## Example scripts
+
+Example scripts to run are in [`scripts/`](scripts/) and [`experiments/`](experiments/).
+
 ## Reproducing the results
 
 Output PDFs/PNGs are saved to `FokkerPlanck/output/`. Run from the repo root.
