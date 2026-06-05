@@ -49,8 +49,11 @@ Example scripts to run are in [`scripts/`](scripts/) and [`experiments/`](experi
 Output PDFs/PNGs are saved to `FokkerPlanck/output/`. Run from the repo root.
 
 ```bash
-# Reproduce all figures from the final presentation
+# Reproduce all figures from the poster-session presentation
 julia --project=FokkerPlanck FokkerPlanck/experiments/slides_plots.jl
+
+# Reproduce all figures from the final report
+julia --project=FokkerPlanck FokkerPlanck/experiments/fig_[...].jl
 ```
 
 This generates `slides_exp1.pdf`, `slides_exp1_profiles_t010.pdf`, and `slides_exp1_profiles_t025.pdf` in `FokkerPlanck/output/`.
