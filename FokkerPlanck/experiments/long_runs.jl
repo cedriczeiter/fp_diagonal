@@ -19,8 +19,9 @@ Combined:
 
 if !isdefined(Main, :FokkerPlanck)
     include(joinpath(@__DIR__, "../src/FokkerPlanck.jl"))
+    using .FokkerPlanck
 end
-using .FokkerPlanck, Plots, Printf
+using Plots, Printf
 import Plots: mm
 
 const OUTDIR = joinpath(@__DIR__, "../output")

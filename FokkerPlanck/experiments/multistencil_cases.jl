@@ -25,8 +25,9 @@ Case 5: P_min map — for the physical model (C10=3) and varying mesh ratios r,
 
 if !isdefined(Main, :FokkerPlanck)
     include(joinpath(@__DIR__, "../src/FokkerPlanck.jl"))
+    using .FokkerPlanck
 end
-using .FokkerPlanck, LinearAlgebra, SparseArrays, Plots, Printf
+using LinearAlgebra, SparseArrays, Plots, Printf
 import Plots: mm
 
 const OUTDIR = joinpath(@__DIR__, "../output")

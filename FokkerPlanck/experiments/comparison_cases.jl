@@ -18,8 +18,9 @@ Case 3: Near-singular tensor (C10=0.1, C11=1, ε=1, point-mass IC). Ax<0 for
 
 if !isdefined(Main, :FokkerPlanck)
     include(joinpath(@__DIR__, "../src/FokkerPlanck.jl"))
+    using .FokkerPlanck
 end
-using .FokkerPlanck, Plots, Printf
+using Plots, Printf
 import Plots: mm
 
 const OUTDIR = joinpath(@__DIR__, "../output")
