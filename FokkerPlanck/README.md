@@ -56,8 +56,6 @@ julia --project=FokkerPlanck FokkerPlanck/experiments/slides_plots.jl
 julia --project=FokkerPlanck FokkerPlanck/experiments/fig_[...].jl
 ```
 
-This generates `slides_exp1.pdf`, `slides_exp1_profiles_t010.pdf`, and `slides_exp1_profiles_t025.pdf` in `FokkerPlanck/output/`.
-
 ## Module structure
 
 ```
