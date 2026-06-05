@@ -26,11 +26,9 @@ D   = compute_diffusion_tensor(kin.d1, kin.d2)
 P   = compute_P_min(D.Dxx, D.Dyy, D.Dxy, grid.r)
 @printf("r=%.3f  P_min=%d\n", grid.r, P)
 
-# Normalised to mass 10. Peak ≈160 at t=0 → violations ~-7e-3 matching report.
-# (Mass-1 normalisation gives violations 10× too small; M₀=10 scales linearly.)
 U0 = normalize_to_mass!(
     make_gaussian(grid; cx=0.5*(grid.x[1]+grid.x[end]),
-                        cy=0.5*(grid.y[1]+grid.y[end]), sigma=0.1), grid, 10.0)
+                        cy=0.5*(grid.y[1]+grid.y[end]), sigma=0.1), grid, 1.0)
 
 T_snap = 0.002
 T_end  = 1.0
@@ -124,8 +122,6 @@ for h in hists
 
     plot!(p_min, h.times, min.(h.min_u, 0.0), label=h.label, color=h.color, lw=1.5)
 end
-
-print(hists)
 
 # 3 equal heatmaps + colorbar-only panel + full-width bottom plot.
 l = @layout [
