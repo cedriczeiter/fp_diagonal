@@ -206,16 +206,23 @@ function build_diffusion_matrix(
     P  = solver.P
     n  = Nx * Ny
 
-    # ── Admissibility guard for geometric grids ───────────────────────────────
-    # Checks eq. (multi-bounds-model) from report 10 §1.5 at the worst-case
-    # corners: r_max = dx_cells[i]/dy_cells[1] and r_min = dx_cells[i]/dy_cells[end].
-    if grid.alpha > 0.0
+    # ── Per-cell P selection for geometric grids ─────────────────────────────
+    # For a geometric grid (alpha > 0) each cell (i,j) has its own local mesh
+    # ratio r̃_{ij} and may need a different stencil order P_local.  We compute
+    # P_local per cell so that the weight formula is always well-conditioned,
+    # matching the paper's "selects P_min column by column" behaviour.
+    # For a uniform grid (alpha == 0) the global P is used for all cells,
+    # which keeps the original symmetric matrix structure.
+    use_per_cell_P = (grid.alpha > 0.0)
+
+    if !use_per_cell_P
+        # Uniform grid: keep legacy admissibility guard
         Fp = Float64(P)
         for i in 1:Nx
             Dxy[i] <= 1e-14 && continue
             r_max_i = grid.dx_cells[i] / grid.dy_cells[1]
             r_min_i = grid.dx_cells[i] / grid.dy_cells[end]
-            upper   = Fp * 2.0 * Dxx[i] / Dxy[i]   # P*(1+ρ_i) = 2P*Dxx/Dxy
+            upper   = Fp * 2.0 * Dxx[i] / Dxy[i]
             lower   = 1.0 / Fp
             r_max_i <= upper + 1e-10 ||
                 error("Geometric grid inadmissible at column i=$i: " *
@@ -229,28 +236,27 @@ function build_diffusion_matrix(
     end
 
     # ── Per-cell coefficient grids ────────────────────────────────────────────
-    # Each entry already incorporates the local cell spacings so that the matrix
-    # assembly loop uses simple arithmetic averages without extra factors.
-    #
-    # For the uniform case dx_cells[i]=dx and dy_cells[j]=dy for all i,j,
-    # so Ax_g[i,j]/dx²  =  old Ax_g[i,j]*inv_dx2 and likewise for the rest.
     Ax_g = zeros(Nx, Ny)
     Ay_g = zeros(Nx, Ny)
     w1_g = zeros(Nx, Ny)
     w2_g = zeros(Nx, Ny)
     w3_g = zeros(Nx, Ny)
+    P_g  = fill(P, Nx, Ny)   # per-cell stencil order (= P for uniform grids)
 
     for i in 1:Nx
         dxi = grid.dx_cells[i]
         for j in 1:Ny
             dyj  = grid.dy_cells[j]
             r_ij = dxi / dyj
-            w1, w2, w3, Ax, Ay = _cell_weights(Dxx[i], Dyy[i], Dxy[i], r_ij, P)
+            P_loc = use_per_cell_P ?
+                compute_P_min([Dxx[i]], [Dyy[i]], [Dxy[i]], r_ij) : P
+            P_g[i,j] = P_loc
+            w1, w2, w3, Ax, Ay = _cell_weights(Dxx[i], Dyy[i], Dxy[i], r_ij, P_loc)
             Ax_g[i,j] = Ax / dxi^2
             Ay_g[i,j] = Ay / dyj^2
             w1_g[i,j] = w1 / (dxi * dyj)
-            w2_g[i,j] = w2 / (dxi * P * dyj)
-            w3_g[i,j] = w3 / (P * dxi * dyj)
+            w2_g[i,j] = w2 / (dxi * P_loc * dyj)
+            w3_g[i,j] = w3 / (P_loc * dxi * dyj)
         end
     end
 
@@ -272,7 +278,8 @@ function build_diffusion_matrix(
     end
 
     for i in 1:Nx, j in 1:Ny
-        k = _ridx(i, j, Ny)
+        k  = _ridx(i, j, Ny)
+        Pij = P_g[i,j]
         # E/W  (axial x)
         if i < Nx
             add!(k, _ridx(i+1,j,Ny), 0.5*(Ax_g[i,j] + Ax_g[i+1,j]))
@@ -287,26 +294,26 @@ function build_diffusion_matrix(
         if j > 1
             add!(k, _ridx(i,j-1,Ny), 0.5*(Ay_g[i,j] + Ay_g[i,j-1]))
         end
-        # (1,1): NE and SW independently so L is symmetric (mass-conserving)
+        # (1,1): NE and SW
         if i < Nx && j < Ny
             add!(k, _ridx(i+1,j+1,Ny), 0.5*(w1_g[i,j] + w1_g[i+1,j+1]))
         end
         if i > 1 && j > 1
             add!(k, _ridx(i-1,j-1,Ny), 0.5*(w1_g[i,j] + w1_g[i-1,j-1]))
         end
-        # (1,P)
-        if i < Nx && j+P <= Ny
-            add!(k, _ridx(i+1,j+P,Ny), 0.5*(w2_g[i,j] + w2_g[i+1,j+P]))
+        # (1,Pij): NE and SW added independently (original boundary behaviour)
+        if i < Nx && j+Pij <= Ny
+            add!(k, _ridx(i+1,j+Pij,Ny), 0.5*(w2_g[i,j] + w2_g[i+1,j+Pij]))
         end
-        if i > 1 && j-P >= 1
-            add!(k, _ridx(i-1,j-P,Ny), 0.5*(w2_g[i,j] + w2_g[i-1,j-P]))
+        if i > 1 && j-Pij >= 1
+            add!(k, _ridx(i-1,j-Pij,Ny), 0.5*(w2_g[i,j] + w2_g[i-1,j-Pij]))
         end
-        # (P,1)
-        if i+P <= Nx && j < Ny
-            add!(k, _ridx(i+P,j+1,Ny), 0.5*(w3_g[i,j] + w3_g[i+P,j+1]))
+        # (Pij,1): NE and SW added independently
+        if i+Pij <= Nx && j < Ny
+            add!(k, _ridx(i+Pij,j+1,Ny), 0.5*(w3_g[i,j] + w3_g[i+Pij,j+1]))
         end
-        if i-P >= 1 && j > 1
-            add!(k, _ridx(i-P,j-1,Ny), 0.5*(w3_g[i,j] + w3_g[i-P,j-1]))
+        if i-Pij >= 1 && j > 1
+            add!(k, _ridx(i-Pij,j-1,Ny), 0.5*(w3_g[i,j] + w3_g[i-Pij,j-1]))
         end
     end
     for k in 1:n
