@@ -216,3 +216,7 @@ p_max = plot(
 p_comparaison_grilles = plot(p_mae, p_max, layout = (1, 2), size = (1100, 480))
 
 display(p_comparaison_grilles)
+
+# --- LIGNES DE SAUVEGARDE ---
+savefig(p_comparaison_grilles, "comparaison_erreurs_grilles.png")
+println("Le graphique combiné a été enregistré sous 'comparaison_erreurs_grilles.png'")
