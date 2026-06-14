@@ -166,10 +166,10 @@ using .FokkerPlanck
 # ============================================================
 # CONFIGURATION REQUALIFIÉE POUR LES 3 RUNS
 # ============================================================
-N_bd = 180
-M_bd = 180
-Nx = 180
-Ny = 181 
+N_bd = 190
+M_bd = 190
+Nx = 190
+Ny = 191 
 T_end = 1000.0
 
 grid_fp = FokkerPlanck.make_grid(xmin=2.0, xmax=180.0, Nx=Nx, ymin=0.0, ymax=180.0, Ny=Ny)
@@ -178,7 +178,7 @@ grid_fp = FokkerPlanck.make_grid(xmin=2.0, xmax=180.0, Nx=Nx, ymin=0.0, ymax=180
 t_mesures = range(0.0, T_end, length=10)
 
 epsilon = 0.3
-C10_init = 1.5e-2   
+C10_init = 1.0e-2   
 C11_init = 1.0e-2   
 G10 = 1e-17        
 
@@ -190,17 +190,23 @@ D   = FokkerPlanck.compute_diffusion_tensor(kin.d1, kin.d2)
 P   = FokkerPlanck.compute_P_min(D.Dxx, D.Dyy, D.Dxy, grid_fp.r)
 
 # Structure pour stocker les trajectoires de la MAE Relative des 3 conditions initiales
-mae_rel_history = Dict{String, Vector{Float64}}()
+mae_history = Dict{String, Vector{Float64}}()
 
-# Définition des 3 scénarios de conditions initiales (n0, m0, amplitude)
+# Définition des scénarios de conditions initiales (n0, m0, amplitude)
 scenarios = [
-    ("Scénario A (Centré)", 25.0, 25.0, 1e-5),
-    ("Scénario B (Riche Solvant)", 45.0, 15.0, 8e-6),
-    ("Scénario C (Riche Soluté)", 15.0, 45.0, 1.2e-5)
+    ("Scénario Centré", 25.0, 25.0, 1.0e-5),
+    ("Scénario Riche Solvant", 45.0, 15.0, 1.0e-5),
+    ("Scénario Riche Soluté", 15.0, 45.0, 1.0e-5),
+    ("Scénario Centré grande amplitude", 25.0, 25.0, 1.0e-1),
+    ("Scénario Centré basse amplitude", 25.0, 25.0, 1.0e-9),
+    ("Scénario Riche Solvant grande amplitude", 45.0, 15.0,1.0e-1 ),
+    ("Scénario Riche Solvant basse amplitude", 45.0, 15.0, 1.0e-9),
+    ("Scénario Riche Soluté grande amplitude", 15.0, 45.0, 1.0e-1),
+    ("Scénario Riche Soluté basse amplitude", 15.0, 45.0, 1.0e-9)
 ]
 
 # ============================================================
-# BOUCLE PRINCIPALE SUR LES 3 CONDITIONS INITIALES
+# BOUCLE PRINCIPALE SUR LES SCENARIOS
 # ============================================================
 for (nom, n0, m0, amp) in scenarios
     println("\n========================================================")
@@ -232,11 +238,9 @@ for (nom, n0, m0, amp) in scenarios
     prob_bd = ODEProblem(f_ode, C0_bd, (0.0, T_end), p_bd)
     sol_bd = solve(prob_bd, KenCarp4(), reltol=1e-5, abstol=1e-20, saveat=t_mesures)
 
-    # 4. Résolution pas à pas de Fokker-Planck et calcul de la MAE Relative Masquée
-    mae_rel_points = Float64[]
+    mae_points = Float64[]
     
     for (k, t) in enumerate(t_mesures)
-        print("\rComparaison FP/BD pour t = ", @sprintf("%.2f s", t))
         
         # Résolution FP ponctuelle
         res_fp = FokkerPlanck.run_simulation(FokkerPlanck.DiagonalMultiStencil(P), grid_fp, params_fp, U0_fp, t)
@@ -244,49 +248,41 @@ for (nom, n0, m0, amp) in scenarios
         
         # Extraction BD à l'instant t
         C_bd_t = sol_bd.u[k]
-        U_bd_projected = zeros(Nx, Ny)
+        U_bd_projected = similar(U_fp_t)
         for j in 1:Ny, i in 1:Nx
             U_bd_projected[i, j] = C_bd_t[idx(i, j - 1, N_bd)]
         end
+
+        mae = sum(abs.(U_fp_t .- U_bd_projected)) / length(U_fp_t)
+        push!(mae_points, mae)
         
-        # --- CALCUL DE LA MAE RELATIVE MASQUÉE ---
-        # On ne calcule l'erreur relative que là où les amas existent (C > 10^-10)
-        # pour éviter que le bruit de fond à 1e-15 ne génère des faux positifs de division
-        masque = U_bd_projected .> 1e-10
-        
-        if sum(masque) > 0
-            # Formule : Moyenne de (|FP - BD| / BD)
-            ecart_relatif = abs.(U_fp_t[masque] .- U_bd_projected[masque]) ./ U_bd_projected[masque]
-            mae_relative = sum(ecart_relatif) / sum(masque)
-        else
-            mae_relative = 0.0
-        end
-        
-        push!(mae_rel_points, mae_relative)
     end
     println()
     
-    mae_rel_history[nom] = mae_rel_points
+    mae_history[nom] = mae_points
 end
 
 # ============================================================
-# 5. PLOT DE L'ÉVOLUTION DE LA MAE RELATIVE
+# 5. GÉNÉRATION ET SAUVEGARDE DU GRAPHIOUE MAE SIMPLE
 # ============================================================
-println("\n--- Génération du graphique comparatif de la MAE Relative ---")
+println("\n--- Génération du graphique de la MAE (échelle log) ---")
 
-# Création du graphique (Y en échelle logarithmique ou classique selon la dynamique de l'erreur)
-plt = plot(title="Évolution de la MAE Relative Masquée (FP vs BD)\n[Amas actifs : C > 10⁻¹⁰]",
-           xlabel="Temps (s)", ylabel="MAE Relative (Écart / Valeur BD)",
-           lw=2, marker=:circle, grid=true, legend=:topright, size=(800, 500))
+p_mae_log = plot(
+    title = "Évolution de la MAE (échelle logarithmique)",
+    xlabel = "Temps (s)",
+    ylabel = "Écart Absolu Moyen",
+    yscale = :log10,          # 👈 échelle logarithmique
+    linewidth = 2.5,
+    marker = :circle,
+    grid = true,
+    legend = :topright
+)
 
-for (nom, points) in mae_rel_history
-    # Optionnel : si vos erreurs relatives varient sur plusieurs ordres de grandeur, 
-    # vous pouvez remplacer par yscale=:log10 dans les arguments globaux ci-dessus.
-    plot!(plt, t_mesures, points, label=nom, lw=2.5)
+for (nom, points) in mae_history
+    plot!(p_mae_log, t_mesures, points, label = nom, lw = 2.5)
 end
 
-# Sauvegarde et affichage du plot
-savefig(plt, "comparatif_mae_relative.png")
-display(plt)
+display(p_mae_log)
 
-println("Félicitations ! Le graphique de l'erreur relative est disponible dans 'comparatif_mae_relative.png'.")
+savefig(p_mae_log, "mae_simulation_9cas_log.png")
+println("Le graphique a été sauvegardé avec succès sous le nom 'mae_simulation_9cas_log.png'.")

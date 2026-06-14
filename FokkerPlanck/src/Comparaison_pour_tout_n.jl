@@ -100,7 +100,7 @@ epsilon = 0.3
 C10_init = 1.5e-2   
 C11_init = 1.0e-2   
 G10 = 1e-17         
-T_end = 900.0       
+T_end = 1000.0       
 
 plage_tailles = [5,20,40,60,80,100,120,140,160,180,190]
 historique_mae = Float64[]
